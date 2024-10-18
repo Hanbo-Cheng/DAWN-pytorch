@@ -7,7 +7,7 @@
 <img src="structure_img\ifferent-styles-at-higher-resolution.gif" width=600>
 </p>
 
-<h5 align="center"> 😊 Please give us a star ⭐ to support us for continous upate 😊  </h5>
+<h5 align="center"> 😊 Please give us a star ⭐ to support us for continous update 😊  </h5>
 
 ## News
 * ```2024.10.14``` 🔥 We release the [Demo page](https://hanbo-cheng.github.io/DAWN/).
