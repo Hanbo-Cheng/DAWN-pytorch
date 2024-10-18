@@ -11,7 +11,7 @@
 
 ## News
 * ```2024.10.14``` 🔥 We release the [Demo page](https://hanbo-cheng.github.io/DAWN/).
-* ```2024.10.18``` 🔥 We release the paper [DAWN]().
+* ```2024.10.18``` 🔥 We release the paper [DAWN](https://arxiv.org/abs/2410.13726).
 
 ## TODO list:
 - [ ]  release the inference code
