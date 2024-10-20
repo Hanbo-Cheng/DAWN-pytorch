@@ -36,5 +36,23 @@ PS: Although optimized code can improve VRAM utilization, it currently sacrifice
 
 ## In Progress ...
 
+## Citing DAWN
+If you wish to refer to the baseline results published here, please use the following BibTeX entries:
 
+```BibTeX
+@misc{dawn2024,
+      title={DAWN: Dynamic Frame Avatar with Non-autoregressive Diffusion Framework for Talking Head Video Generation}, 
+      author={Hanbo Cheng and Limin Lin and Chenyu Liu and Pengcheng Xia and Pengfei Hu and Jiefeng Ma and Jun Du and Jia Pan},
+      year={2024},
+      eprint={2410.13726},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2410.13726}, 
+}
+```
+## Acknowledgement
+
+[Limin Lin](https://github.com/LiminLin0) and [Hanbo Cheng](https://github.com/Hanbo-Cheng) contributed equally to the project.
+
+Thank you to the authors of [Diffused Heads](https://github.com/MStypulkowski/diffused-heads) for assisting us in reproducing their work! We also extend our gratitude to the authors of [MRAA](https://github.com/snap-research/articulated-animation), [LFDM](https://github.com/snap-research/articulated-animation) and [ACTOR](https://github.com/Mathux/ACTOR) for their contributions to the open-source community. Lastly, we thank our mentors and co-authors for their continuous support in our research work!
 
