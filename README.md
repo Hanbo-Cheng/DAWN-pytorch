@@ -2,6 +2,7 @@
 
 [![arXiv](https://img.shields.io/badge/Arxiv-2410.13726-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2410.13726)
 [![Demo Page](https://img.shields.io/badge/Demo_Page-blue)](https://hanbo-cheng.github.io/DAWN/)
+[![zhihu](https://img.shields.io/badge/知乎-0079FF.svg?logo=zhihu&logoColor=white)](https://zhuanlan.zhihu.com/p/2253009511)
 
 <p align="center">
 <img src="structure_img\ifferent-styles-at-higher-resolution.gif" width=600>
@@ -12,7 +13,7 @@
 ## News
 * ```2024.10.14``` 🔥 We release the [Demo page](https://hanbo-cheng.github.io/DAWN/).
 * ```2024.10.18``` 🔥 We release the paper [DAWN](https://arxiv.org/abs/2410.13726).
-
+* ```2024.10.21``` 🔥 We update the Chinese introduction [知乎](https://zhuanlan.zhihu.com/p/2253009511).
 ## TODO list:
 - [ ]  release the inference code
 - [ ]  release the pretrained model of **128*128**
