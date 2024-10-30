@@ -15,9 +15,9 @@
 * ```2024.10.18``` 🔥 We release the paper [DAWN](https://arxiv.org/abs/2410.13726).
 * ```2024.10.21``` 🔥 We update the Chinese introduction [知乎](https://zhuanlan.zhihu.com/p/2253009511).
 ## TODO list:
-- [ ]  release the inference code
-- [ ]  release the pretrained model of **128*128**
-- [ ]  release the pretrained model of **256*256**
+- [ ]  release the inference code (before December)
+- [ ]  release the pretrained model of **128*128** (before December)
+- [ ]  release the pretrained model of **256*256** (before December)
 - [ ] in progress ...
 
 
