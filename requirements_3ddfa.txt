@@ -1,0 +1,15 @@
+torch
+torchvision
+matplotlib
+numpy==1.23.0
+opencv-python # cv2
+imageio
+imageio-ffmpeg
+pyyaml # yaml
+tqdm
+argparse
+cython
+scikit-image # skimage
+scipy
+onnxruntime
+gradio
