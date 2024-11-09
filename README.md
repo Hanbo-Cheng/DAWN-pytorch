@@ -18,8 +18,8 @@
 * ```2024.10.14``` 🔥 We release the [Demo page](https://hanbo-cheng.github.io/DAWN/).
 * ```2024.10.18``` 🔥 We release the paper [DAWN](https://arxiv.org/abs/2410.13726).
 * ```2024.10.21``` 🔥 We update the Chinese introduction [](https://zhuanlan.zhihu.com/p/2253009511).
-* ```2024.11.7``` 🔥 We realse the pretrained model on [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN).
-* ```2024.11.9``` 🔥 We realse the inference code. We sincerely invite you to experience our model. 😊
+* ```2024.11.7``` 🔥🔥 We realse the pretrained model on [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN).
+* ```2024.11.9``` 🔥🔥🔥 We realse the inference code. We sincerely invite you to experience our model. 😊
 ## TODO list:
 - [x]  release the inference code
 - [x]  release the pretrained model of **128*128**
