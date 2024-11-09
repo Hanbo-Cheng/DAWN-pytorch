@@ -4,10 +4,10 @@
 [![Demo Page](https://img.shields.io/badge/Demo_Page-blue)](https://hanbo-cheng.github.io/DAWN/)
 [![zhihu](https://img.shields.io/badge/知乎-0079FF.svg?logo=zhihu&logoColor=white)](https://zhuanlan.zhihu.com/p/2253009511)
  <a href='https://huggingface.co/Hanbo-Cheng/DAWN'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20HuggingFace-Model-yellow'></a>
-<p align="center">
+
 
 [中文文档](README_CN.md)
-
+<p align="center">
 <img src="structure_img\ifferent-styles-at-higher-resolution.gif" width=600>
 </p>
 
