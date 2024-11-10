@@ -19,7 +19,7 @@ python ./hubert_extract/data_gen/process_lrs3/process_audio_hubert_interpolate_d
     --src_audio_path $audio_path \
     --save_path $audio_emb_path
 
-python ./src/evaluate/tvae_eval_single_both_eye_pose.py \
+python ./PBnet/src/evaluate/tvae_eval_single_both_eye_pose.py \
     --audio_path  $audio_emb_path \
     --init_pose_blink $cache_path \
     --ckpt './pretrain_models/pbnet_both/checkpoint_100000.pth.tar' \

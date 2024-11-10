@@ -30,11 +30,11 @@
 
 ## Equipment Requirements
 
-With our VRAM-oriented optimized [code](DM_3\modules\video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py), the maximum length of video that can be generated is **linearly related** to the size of the GPU VRAM. Larger VRAM produce longer videos.
+With our VRAM-oriented optimized [code](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py), the maximum length of video that can be generated is **linearly related** to the size of the GPU VRAM. Larger VRAM produce longer videos.
 - To generate **128*128** video, we recommend using a GPU with **12GB** or more VRAM. This can at least generate video of approximately **400 frames**.
 - To generate **256*256** video, we recommend using a GPU with **24GB** or more VRAM. This can at least generate video of approximately **200 frames**.
 
-PS: Although optimized [code](DM_3\modules\video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py) can improve VRAM utilization, it currently sacrifices inference speed due to incomplete optimization of local attention. We are actively working on this issue, and if you have a better solution, we welcome your PR. If you wish to achieve faster inference speeds, you can use [unoptimized code](DM_3\modules\video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py), but this will increase VRAM usage (O(n²) spatial complexity).
+PS: Although optimized [code](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py) can improve VRAM utilization, it currently sacrifices inference speed due to incomplete optimization of local attention. We are actively working on this issue, and if you have a better solution, we welcome your PR. If you wish to achieve faster inference speeds, you can use [unoptimized code](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py), but this will increase VRAM usage (O(n²) spatial complexity).
 ## Methodology
 ### The overall structure of DAWN:
 <p align="center">
