@@ -1,4 +1,3 @@
-
 test_name=ood_test_1009 # $(date +"%Y-%m-%d_%H-%M-%S")
 time_tag=tmp1009 # $(date +"%Y-%m-%d_%H-%M-%S")
 audio_path=WRA_MarcoRubio_000.wav 
@@ -20,7 +19,6 @@ python ./hubert_extract/data_gen/process_lrs3/process_audio_hubert_interpolate_d
     --src_audio_path $audio_path \
     --save_path $audio_emb_path
 
-# conda activate LFDM_a40
 python ./PBnet/src/evaluate/tvae_eval_single.py \
     --audio_path  $audio_emb_path \
     --init_pose_blink $cache_path \
@@ -29,7 +27,8 @@ python ./PBnet/src/evaluate/tvae_eval_single.py \
     --ckpt_blink ./pretrain_models/pbnet_seperate/blink/checkpoint_95000.pth.tar 
 
 
-python your_path/DM_3/test_demo/test_VIDEO_hdtf_df_wpose_face_cond_init_ca_newae_ood_128_2.py --gpu 0  \
+
+python ./DM_3/test_demo/test_VIDEO_hdtf_df_wpose_face_cond_init_ca_newae_ood_256_2.py --gpu 0  \
     --source_img_path $image_path \
     --init_state_path $cache_path \
     --drive_blink_path $cache_path/dri_blink.npy \
@@ -37,3 +36,4 @@ python your_path/DM_3/test_demo/test_VIDEO_hdtf_df_wpose_face_cond_init_ca_newae
     --audio_emb_path $audio_emb_path \
     --save_path $video_output_path/$test_name \
     --src_audio_path $audio_path
+

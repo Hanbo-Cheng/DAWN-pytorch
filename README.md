@@ -71,6 +71,9 @@ The preparation for inference:
 2. Changing the path in  `run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh` or `run_ood_test\run_DM_v0_df_test_256_1.sh`. Infill the `image_path`, `audio_path` and `cache_path`. The `run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh` is used to perform inference on 128 * 128 images and `run_ood_test\run_DM_v0_df_test_256_1.sh` is used to perform inference on 256 * 256 images.
    
 3. Using `bash xxxx.sh` to run the script.
+
+### About PBNet
+We provide two PBNet checkpoint: 1. generating both blink and pose together 2. generating blink and pose seperately (script end with "seperate_pose_blink"). According to the quantitative results, these two method has similar performance. 
    
 
 
