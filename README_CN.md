@@ -26,11 +26,11 @@
 - [ ] 进行中...
   
 ## 设备要求
-使用我们针对显存优化的代码，生成的视频长度与显存的大小**线性相关**。更大的显存可以生成更长的视频。 
+使用我们针对显存优化的[代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)，生成的视频长度与显存的大小**线性相关**。更大的显存可以生成更长的视频。 
 - 为了生成**128 * 128**视频，建议使用至少具有**12GB** 显存的GPU。这可以生成大约**400帧**的视频。 
 - 为了生成**256 * 256**视频，建议使用至少具有**24GB** 显存的GPU。这可以生成大约**200帧**的视频。
 
-PS: 尽管经过优化的[code](DM_3\modules\video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)可以提高显存的利用率，但目前牺牲了推理速度，因为局部注意力的优化不完整。我们正在积极解决这个问题，如果您有更好的解决方案，欢迎您的PR。如果您希望获得更快的推理速度，可以使用[未优化的代码](DM_3\modules\video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py)，但这会增加显存的使用（O(n²)空间复杂度）。
+PS: 尽管经过优化的[代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)可以提高显存的利用率，但目前牺牲了推理速度，因为局部注意力的优化不完整。我们正在积极解决这个问题，如果您有更好的解决方案，欢迎您的PR。如果您希望获得更快的推理速度，可以使用[未优化的代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py)，但这会增加显存的使用（O(n²)空间复杂度）。
 
 ## 方法论
 ### DAWN的整体结构：
