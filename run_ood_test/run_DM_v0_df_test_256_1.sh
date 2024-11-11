@@ -9,8 +9,8 @@ video_output_path=cache/
 conda activate 3DDFA
 cd extract_init_states
 python demo_pose_extract_2d_lmk_img.py \
-    --input $image_path \
-    --output $cache_path
+    --input ../$image_path \
+    --output ../$cache_path
 
 cd ..
 conda activate DAWN
