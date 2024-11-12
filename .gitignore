@@ -4,4 +4,6 @@ __pycache__
 cache
 submit*
 pretrain_models/*
-
+*.mp3
+*.mp4
+tmp*

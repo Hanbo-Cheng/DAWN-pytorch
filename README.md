@@ -55,7 +55,7 @@ conda activate 3DDFA
 pip install -r requirements_3ddfa.txt
 ```
 
-1. Follow the [readme](extract_init_states\readme.md) and [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2) to set up the 3DDFA environment.
+1. Follow the [readme](extract_init_states/readme.md) and [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2) to set up the 3DDFA environment.
  
 
 ## Inference
@@ -66,18 +66,18 @@ Since our model **is trained only on the HDTF dataset** and has few parameters, 
 - have the face occupying the main position in the image.
 
 The preparation for inference:
-1. Download the pretrain checkpoint from [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN). Create the `./pretrain_models` directory and put the checkpoint file into it.
+1. Download the pretrain checkpoints from [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN). Create the `./pretrain_models` directory and put the checkpoint file into it.
    
 2. Changing the path in  `run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh` or `run_ood_test\run_DM_v0_df_test_256_1.sh`. Infill the `image_path`, `audio_path` and `cache_path`. The `run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh` is used to perform inference on 128 * 128 images and `run_ood_test\run_DM_v0_df_test_256_1.sh` is used to perform inference on 256 * 256 images.
    
 3. Using `bash xxxx.sh` to run the script.
 
 ### About PBNet
-We provide two PBNet checkpoint: 1. generating both blink and pose together 2. generating blink and pose seperately (script end with "seperate_pose_blink"). According to the quantitative results, these two method has similar performance. 
+We provide two PBNet checkpoints: 1. generating both blink and pose together 2. generating blink and pose separately (script end with "seperate_pose_blink"). According to the quantitative results, these two methods have similar performance. 
    
 
 
-This code is tested on internal server of company and my Windows 11 PC. There might be some minor problems due to the difference of the equipment. Please feel free to leave issues or PR if you encounter some promblems, we are glad to help!
+This code is tested on internal server of company and my Windows 11 PC. There might be some minor problems due to the difference of the equipment. Please feel free to leave issues or PR if you encounter some problems, we are glad to help!
 
 **For testing on datasets**: If you wish to test the performance of DAWN on datasets, we recommend to warp our code and process data in batches for each step (including extracting the initial states, audio embedding, inference of PBNet, inference of A2V-FDM). Reloading the model repeatedly will make your testing efficiency very low. We also plan to release the inference code for HDTF dataset in the future.
 
