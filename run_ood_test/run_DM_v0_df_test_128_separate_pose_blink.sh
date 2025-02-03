@@ -7,6 +7,7 @@ cache_path=cache/$time_tag
 audio_emb_path=cache/target_audio.npy
 video_output_path=cache/
 
+source activate
 conda activate 3DDFA
 cd extract_init_states
 python demo_pose_extract_2d_lmk_img.py \

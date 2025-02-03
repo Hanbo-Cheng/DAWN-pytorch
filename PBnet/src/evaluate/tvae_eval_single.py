@@ -1,7 +1,12 @@
 import torch
 from tqdm import tqdm
 import sys
-sys.path.append('/your/home/dir\PBnet')
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+    print(parent_dir)
 
 from src.utils.fixseed import fixseed
 from src.parser.tools import load_args

@@ -12,4 +12,5 @@ cython
 scikit-image # skimage
 scipy
 onnxruntime
+onnx
 gradio

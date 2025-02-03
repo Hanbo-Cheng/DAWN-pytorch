@@ -20,9 +20,9 @@ import tempfile
 
 print("Loading the Wav2Vec2 Processor...")
 # wav2vec2_processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft")
-wav2vec2_processor = Wav2Vec2Processor.from_pretrained("./pretrain_models/DAWN/hubert_ckp")
+wav2vec2_processor = Wav2Vec2Processor.from_pretrained("./pretrain_models/hubert_ckp")
 print("Loading the HuBERT Model...")
-hubert_model = HubertModel.from_pretrained("./pretrain_models/DAWN/hubert_ckp", from_tf = True)
+hubert_model = HubertModel.from_pretrained("./pretrain_models/hubert_ckp", from_tf = True)
 
 def get_hubert_from_16k_wav(wav_16k_name):
     speech_16k, _ = sf.read(wav_16k_name)
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     # speech_16k, _ = sf.read(wav_path)
 
     num_frames = int((speech_16k.shape[0] / 16000) * 25)
-    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:0')
+    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:1')
     hubert_hidden = hubert_hidden.detach().numpy()
     interp_func = interp1d(np.arange(hubert_hidden.shape[0]), hubert_hidden, kind='linear', axis=0)
     hubert_feature_interpolated = interp_func(np.linspace(0, hubert_hidden.shape[0] - 1, num_frames)).astype(np.float32)

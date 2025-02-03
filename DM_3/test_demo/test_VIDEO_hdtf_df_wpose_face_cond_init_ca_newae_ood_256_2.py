@@ -31,7 +31,7 @@ import datetime
 
 
 BATCH_SIZE = 1
-MAX_N_FRAMES = int(250 * 2)
+MAX_N_FRAMES = int(200)
 GPU = "0"
 INPUT_SIZE = 256
 RANDOM_SEED = 1234
