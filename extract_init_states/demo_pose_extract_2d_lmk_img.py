@@ -83,7 +83,7 @@ def main(args,img, save_path, pose_path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='The demo of still image of 3DDFA_V2')
     parser.add_argument('-c', '--config', type=str, default=f'{current_dir}/configs/mb1_120x120.yml')
-    parser.add_argument('-f', '--img_fp', type=str, default='examples/inputs/0.png')
+    parser.add_argument('-f', '--img_fp', type=str, default='/disk2/pfhu/DAWN-pytorch/images/image/anime_female2.jpeg')
     parser.add_argument('-m', '--mode', type=str, default='gpu', help='gpu or cpu mode')
     parser.add_argument('-o', '--opt', type=str, default='pose',
                         choices=['2d_sparse', '2d_dense', '3d', 'depth', 'pncc', 'uv_tex', 'pose', 'ply', 'obj'])

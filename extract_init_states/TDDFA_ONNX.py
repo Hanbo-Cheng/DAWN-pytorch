@@ -2,6 +2,13 @@
 
 __author__ = 'cleardusk'
 
+import os 
+import sys  
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+    print(current_dir)
+    
 import os.path as osp
 import numpy as np
 import cv2
@@ -26,7 +33,7 @@ class TDDFA_ONNX(object):
         # torch.set_grad_enabled(False)
 
         # load onnx version of BFM
-        bfm_fp = kvs.get('bfm_fp', make_abs_path('configs/bfm_noneck_v3.pkl'))
+        bfm_fp = make_abs_path(kvs.get('bfm_fp', 'configs/bfm_noneck_v3.pkl'))
         bfm_onnx_fp = bfm_fp.replace('.pkl', '.onnx')
         if not osp.exists(bfm_onnx_fp):
             convert_bfm_to_onnx(
@@ -46,11 +53,11 @@ class TDDFA_ONNX(object):
         self.gpu_id = kvs.get('gpu_id', 0)
         self.size = kvs.get('size', 120)
 
-        param_mean_std_fp = kvs.get(
-            'param_mean_std_fp', make_abs_path(f'configs/param_mean_std_62d_{self.size}x{self.size}.pkl')
+        param_mean_std_fp = make_abs_path(kvs.get(
+            'param_mean_std_fp', f'configs/param_mean_std_62d_{self.size}x{self.size}.pkl')
         )
 
-        onnx_fp = kvs.get('onnx_fp', kvs.get('checkpoint_fp').replace('.pth', '.onnx'))
+        onnx_fp =  make_abs_path(kvs.get('onnx_fp', kvs.get('checkpoint_fp').replace('.pth', '.onnx'))) 
 
         # convert to onnx online if not existed
         if onnx_fp is None or not osp.exists(onnx_fp):

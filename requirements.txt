@@ -123,7 +123,7 @@ termcolor==2.3.0
 threadpoolctl==3.2.0
 tifffile==2023.7.10
 tokenizers==0.14.1
-torch==2.1.0+cu121
+# torch==2.1.0+cu121
 torchaudio==2.0.1
 torchvision==0.15.1
 tqdm==4.66.1

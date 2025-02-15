@@ -1,5 +1,6 @@
 import os
 import sys
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 # adding path of PBnet
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
@@ -32,6 +33,21 @@ def get_hubert_from_16k_wav(wav_16k_name):
 @torch.no_grad()
 def get_hubert_from_16k_speech(speech, device="cuda:0"):
     global hubert_model
+    print(f"当前显存占用: {torch.cuda.memory_allocated()} 字节")
+    print(f"显存缓存占用: {torch.cuda.memory_reserved()} 字节")
+    torch.cuda.empty_cache()
+    # 强制重置 PyTorch 的 CUDA 分配器
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    
+    # 可选：手动设置较大的初始缓存大小
+    torch.cuda.set_per_process_memory_fraction(0.9)  # 允许使用90%的显存
+    # 在加载模型前先检查显存状态
+    print(f"Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**2:.2f} MB")
+    print(f"Allocated memory: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
+    print(f"Cached memory: {torch.cuda.memory_reserved() / 1024**2:.2f} MB")
+    print(torch.cuda.memory_summary())
+    
     hubert_model = hubert_model.to(device)
     if speech.ndim ==2:
         speech = speech[:, 0] # [T, 2] ==> [T,]
@@ -130,7 +146,7 @@ if __name__ == '__main__':
     # speech_16k, _ = sf.read(wav_path)
 
     num_frames = int((speech_16k.shape[0] / 16000) * 25)
-    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:1')
+    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:0')
     hubert_hidden = hubert_hidden.detach().numpy()
     interp_func = interp1d(np.arange(hubert_hidden.shape[0]), hubert_hidden, kind='linear', axis=0)
     hubert_feature_interpolated = interp_func(np.linspace(0, hubert_hidden.shape[0] - 1, num_frames)).astype(np.float32)
