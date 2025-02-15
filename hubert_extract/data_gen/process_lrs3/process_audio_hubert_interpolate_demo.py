@@ -30,7 +30,7 @@ def get_hubert_from_16k_wav(wav_16k_name):
     return hubert
 
 @torch.no_grad()
-def get_hubert_from_16k_speech(speech, device="cuda:0"):
+def get_hubert_from_16k_speech(speech, device="cuda:1"):
     global hubert_model
     hubert_model = hubert_model.to(device)
     if speech.ndim ==2:
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     # speech_16k, _ = sf.read(wav_path)
 
     num_frames = int((speech_16k.shape[0] / 16000) * 25)
-    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:1')
+    hubert_hidden = get_hubert_from_16k_speech(speech_16k, device = 'cuda:1')  # 30系GPU 多卡服务器，不能设置cuda:0 原因不明
     hubert_hidden = hubert_hidden.detach().numpy()
     interp_func = interp1d(np.arange(hubert_hidden.shape[0]), hubert_hidden, kind='linear', axis=0)
     hubert_feature_interpolated = interp_func(np.linspace(0, hubert_hidden.shape[0] - 1, num_frames)).astype(np.float32)
