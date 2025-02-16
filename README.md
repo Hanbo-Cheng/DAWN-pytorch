@@ -64,7 +64,7 @@ Since our model **is trained only on the HDTF dataset** and has few parameters, 
 - have the face occupying the main position in the image.
 
 The preparation for inference:
-1. Download the pretrain checkpoints from [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN). Create the `./pretrain_models` directory and put the checkpoint files into it. Please down load the Hubert model from [facebook/hubert-large-ls960-ft](https://huggingface.co/facebook/hubert-large-ls960-ft/tree/main).
+1. Download the pretrain checkpoints from [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN). Create the `./pretrain_models` directory and put the checkpoint files into it. Please down load the Hubert model from [facebook/hubert-large-ls960-ft](https://huggingface.co/facebook/hubert-large-ls960-ft/tree/main). 
       ```
       directory structure:
 
