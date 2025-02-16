@@ -162,6 +162,7 @@ class VideoGenerator:
         boxes = face_boxes(image)
         if len(boxes) == 0:
             raise ValueError(f'No face detected in image: {self.image_path}')
+            return None
         
         # Get 3DMM parameters and ROI boxes
         param_lst, roi_box_lst = tddfa(image, boxes)
