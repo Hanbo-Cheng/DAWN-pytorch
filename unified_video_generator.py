@@ -42,6 +42,8 @@ class VideoGenerator:
         self.image_path = args.image_path
         self.output_path = args.output_path
         self.cache_path = args.cache_path
+
+        self.resolution = args.resolution
         
         # Ensure output directories exist
         os.makedirs(self.cache_path, exist_ok=True)
@@ -64,9 +66,9 @@ class VideoGenerator:
 
         # HuBERT model configuration
         print("Loading the Wav2Vec2 Processor...")
-        self.wav2vec2_processor = AutoProcessor.from_pretrained("/disk2/pfhu/hubert-large-ls960-ft")
+        self.wav2vec2_processor = AutoProcessor.from_pretrained("./pretrain_models/hubert-large-ls960-ft")
         print("Loading the HuBERT Model...")
-        self.hubert_model = HubertModel.from_pretrained("/disk2/pfhu/hubert-large-ls960-ft")
+        self.hubert_model = HubertModel.from_pretrained("./pretrain_models/hubert-large-ls960-ft")
         self.hubert_model.eval()
         # PBnet related configuration
         self.pbnet_pose_ckpt = './pretrain_models/pbnet_seperate/pose/checkpoint_40000.pth.tar'
@@ -114,7 +116,7 @@ class VideoGenerator:
         current_dir = osp.dirname(osp.abspath(__file__))
         
         # Load configuration file
-        config_path = osp.join(current_dir, 'config', 'DAWN_128.yaml')
+        config_path = osp.join(current_dir, 'config', f'DAWN_{int(self.resolution)}.yaml')
         with open(config_path, 'r') as f:
             self.video_config = yaml.safe_load(f)
             
@@ -589,6 +591,7 @@ def parse_args():
     parser.add_argument('--image_path', type=str, default= 'real_female_1.jpeg', help='Input image path')
     parser.add_argument('--output_path', type=str, default= 'output', help='Output video path')
     parser.add_argument('--cache_path', type=str, default='cache/tmp', help='Cache file path')
+    parser.add_argument('--resolution', type=int, default=128, help='resolution')
     return parser.parse_args()
 
 def main():
