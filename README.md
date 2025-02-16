@@ -66,6 +66,10 @@ Since our model **is trained only on the HDTF dataset** and has few parameters, 
 The preparation for inference:
 1. Download the pretrain checkpoints from [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN). Create the `./pretrain_models` directory and put the checkpoint files into it. Please down load the Hubert model from [facebook/hubert-large-ls960-ft](https://huggingface.co/facebook/hubert-large-ls960-ft/tree/main).
 
+
+```
+directory structure:
+
 pretrain_models/
 ├── LFG_256_400ep.pth
 ├── LFG_128_1000ep.pth
@@ -73,7 +77,8 @@ pretrain_models/
 ├── DAWN_128.pth
 └── hubert-large-ls960-ft/
     ├── .....
-   
+```
+
 2. Run the inference script: 
    ```
    python unified_video_generator.py  \
