@@ -1,4 +1,5 @@
 import os
+import os.path as osp
 import argparse
 from pathlib import Path
 import subprocess
@@ -111,24 +112,13 @@ class VideoGenerator:
         self.model_b = model_b
 
         # 添加视频生成相关默认配置
-        self.video_config = {
-            'input_size': 256,
-            'max_n_frames': 200,
-            'random_seed': 1234,
-            'mean': (0.0, 0.0, 0.0),
-            'win_width': 40,
-            'sampling_step': 20,
-            'ddim_sampling_eta': 1.0,
-            'cond_scale': 1.0,
-            'model_config': {
-                'is_train': True,
-                'pose_dim': 6,
-                'config_pth': './config/hdtf256.yaml',
-                'ae_pretrained_pth': './pretrain_models/LFG_256_400ep.pth',
-                'diffusion_pretrained_pth': './pretrain_models/DAWN_256.pth'
-            }
-        }
+        current_dir = osp.dirname(osp.abspath(__file__))
         
+        # 加载配置文件
+        config_path = osp.join(current_dir, 'config', 'DAWN_128.yaml')
+        with open(config_path, 'r') as f:
+            self.video_config = yaml.safe_load(f)
+            
         # 初始化视频生成模型为None，延迟加载
         self.video_model = self._init_video_model(self.video_config['model_config'])
 

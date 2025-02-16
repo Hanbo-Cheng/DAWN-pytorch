@@ -1,0 +1,15 @@
+input_size: 128
+max_n_frames: 200
+random_seed: 1234
+mean: [0.0, 0.0, 0.0]
+win_width: 40
+sampling_step: 20
+ddim_sampling_eta: 1.0
+cond_scale: 1.0
+
+model_config:
+  is_train: true
+  pose_dim: 6
+  config_pth: './config/hdtf128.yaml'
+  ae_pretrained_pth: './pretrain_models/LFG_128_1000ep.pth'
+  diffusion_pretrained_pth: './pretrain_models/DAWN_128.pth'
