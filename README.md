@@ -69,12 +69,12 @@ The preparation for inference:
       directory structure:
 
       pretrain_models/
-      ├── LFG_256_400ep.pth
-      ├── LFG_128_1000ep.pth
-      ├── DAWN_256.pth
-      ├── DAWN_128.pth
-      └── hubert-large-ls960-ft/
-      ├── .....
+            ├── LFG_256_400ep.pth
+            ├── LFG_128_1000ep.pth
+            ├── DAWN_256.pth
+            ├── DAWN_128.pth
+            └── hubert-large-ls960-ft/
+                  ├── .....
       ```
 
 2. Run the inference script: 
