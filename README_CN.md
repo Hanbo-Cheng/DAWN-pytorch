@@ -12,25 +12,27 @@
 
 😊 请给我们一个star⭐支持我们的持续更新 😊
 ## 新闻
-* ```2024.10.14``` 🔥 我们发布了[Demo page](https://hanbo-cheng.github.io/DAWN/)。
-* ```2024.10.18``` 🔥 我们发布了论文[DAWN](https://arxiv.org/abs/2410.13726)。
-* ```2024.10.21``` 🔥 我们更新了中文介绍。
-* ```2024.11.7```  🔥 我们在[hugging face](https://huggingface.co/Hanbo-Cheng/DAWN)上发布了预训练模型。
-* ```2024.11.9``` 🔥 我们上传了推理代码。我们诚挚邀请您体验我们的模型。 😊
-  
-## TODO list:
-- [x] 发布推理代码
-- [x] 发布128*128的预训练模型
-- [x] 发布256*256的预训练模型
-- [ ] 发布HDTF数据集的测试代码
-- [ ] 进行中...
-  
-## 设备要求
-使用我们针对显存优化的[代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)，生成的视频长度与显存的大小**线性相关**。更大的显存可以生成更长的视频。 
-- 为了生成**128 * 128**视频，建议使用至少具有**12GB** 显存的GPU。这可以生成大约**400帧**的视频。 
-- 为了生成**256 * 256**视频，建议使用至少具有**24GB** 显存的GPU。这可以生成大约**200帧**的视频。
+* ```2024.10.14``` 🔥 我们发布了 [DEMO](https://hanbo-cheng.github.io/DAWN/)。
+* ```2024.10.18``` 🔥 我们发布了论文 [DAWN](https://arxiv.org/abs/2410.13726)。
+* ```2024.10.21``` 🔥 我们更新了中文介绍 [知乎](https://zhuanlan.zhihu.com/p/2253009511)。
+* ```2024.11.7``` 🔥🔥 我们在 [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN) 上发布了预训练模型。
+* ```2024.11.9``` 🔥🔥🔥 我们发布了推理代码。我们诚挚邀请您体验我们的模型。😊
+*  ```2025.2.16``` 🔥🔥🔥 我们优化了统一推理代码。现在您可以仅用一个脚本运行测试流程。🚀
 
-PS: 尽管经过优化的[代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)可以提高显存的利用率，但目前牺牲了推理速度，因为局部注意力的优化不完整。我们正在积极解决这个问题，如果您有更好的解决方案，欢迎您的PR。如果您希望获得更快的推理速度，可以使用[未优化的代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py)，但这会增加显存的使用（O(n²)空间复杂度）。
+## 待办事项列表：
+- [x]  发布推理代码
+- [x]  发布 **128*128** 的预训练模型
+- [x]  发布 **256*256** 的预训练模型 
+- [x] 发布统一测试代码
+- [ ]  进行中 ...
+
+## 设备要求
+
+使用我们针对VRAM优化的 [代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py)，生成的视频最大长度与GPU VRAM的大小 **成线性关系**。更大的VRAM可以生成更长的视频。
+- 要生成 **128*128** 视频，我们建议使用 **12GB** 或更多VRAM的GPU。这至少可以生成大约 **400帧** 的视频。
+- 要生成 **256*256** 视频，我们建议使用 **24GB** 或更多VRAM的GPU。这至少可以生成大约 **200帧** 的视频。
+
+PS：尽管优化的 [代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test_local_opt.py) 可以提高VRAM利用率，但由于局部注意力的优化尚不完整，目前牺牲了推理速度。我们正在积极解决这个问题，如果您有更好的解决方案，欢迎您提交PR。如果您希望实现更快的推理速度，可以使用 [未优化的代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_test.py)，但这将增加VRAM使用（O(n²) 空间复杂度）。
 
 ## 方法论
 ### DAWN的整体结构：
@@ -39,32 +41,37 @@ PS: 尽管经过优化的[代码](DM_3/modules/video_flow_diffusion_multiGPU_v0_
 </p>
 
 ## 环境
-我们强烈建议在Linux平台上尝试DAWN。在Windows上运行可能会产生一些需要手动删除的垃圾文件，并且在Windows平台上运行需要额外步骤部署3DDFA环境（我们的extract_init_states）[comment](https://github.com/cleardusk/3DDFA_V2/issues/12#issuecomment-697479173)。
+我们强烈建议在Linux平台上尝试DAWN。在Windows上运行可能会产生一些需要手动删除的垃圾文件，并且需要额外的努力来部署3DDFA库（我们的 `extract_init_states` 文件夹） [评论](https://github.com/cleardusk/3DDFA_V2/issues/12#issuecomment-697479173)。
 
 1. 设置conda环境
 ```
 conda create -n DAWN python=3.8
 conda activate DAWN
 pip install -r requirements.txt
-conda create -n 3DDFA python=3.8
-conda activate 3DDFA
-pip install -r requirements_3ddfa.txt
 ```
 
-1. 遵循(extract_init_states\readme.md) 和 [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2)设置3DDFA环境。
+2. 按照 [readme](extract_init_states/readme.md) 和 [3DDFA_V2](https://github.com/cleardusk/3DDFA_V2) 设置3DDFA环境。
 
 ## 推理
-1. 从[hugging face](https://huggingface.co/Hanbo-Cheng/DAWN)下载预训练检查。创建`./pretrain_models`目录并将检查点文件放入其中。
-2. 修改`run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh` 或者 `run_ood_test\run_DM_v0_df_test_256_1.sh`中的路径。这包括了`image_path`, driving `audio_path` and `cache_path`。`run_ood_test\run_DM_v0_df_test_128_both_pose_blink.sh`用于实现 128 * 128 视频的推理， `run_ood_test\run_DM_v0_df_test_256_1.sh` 用于实现 256 * 256视频的推理。
 
-3. 使用 `bash xxxx.sh` 根据你的需求运行上述的脚本。
+由于我们的模型 **仅在HDTF数据集上训练**，并且参数较少，为了确保最佳的驱动效果，请尽量提供以下示例：
+- 尽量使用标准人像照片，避免佩戴帽子或大型头饰
+- 确保背景与主体之间有清晰的边界
+- 确保面部在图像中占据主要位置。
 
-### 关于PBNet
-我们提供两个PBNet检查点：1.同时生成眨眼和姿态 2.分别生成眨眼和姿态（脚本以“separate_pose_blink”结尾）。根据定量结果，这两种方法性能相似。
+推理准备：
+1. 从 [hugging face](https://huggingface.co/Hanbo-Cheng/DAWN) 下载预训练检查点。创建 `./pretrain_models` 目录并将检查点文件放入其中。请从 [facebook/hubert-large-ls960-ft](https://huggingface.co/facebook/hubert-large-ls960-ft/tree/main) 下载Hubert模型。
+   
+2. 运行推理脚本： 
+   ```
+   python unified_video_generator.py  \
+      --audio_path your/audio/path  \
+      --image_path your/image/path  \
+      --output_path output/path \
+      --cache_path cache/path 
+   ```
 
------
+***在其他数据集上的推理：***
+通过在每次推理时指定 `VideoGenerator` 类的 `audio_path`、`image_path` 和 `output_path`，并修改 `unified_video_generator.py` 中第310-312行和393-394行的 `directory_name` 和 `output_video_path` 的内容，您可以控制保存图像和视频的命名逻辑，从而在任何数据集上进行测试。
 
-这段代码在公司内部服务器和我的Windows 11个人电脑上进行了测试。由于设备之间的差异，可能会出现一些细微问题。如果遇到问题，请随时提出问题或提交PR，我们乐意提供帮助！
-
-**用于数据集测试**：如果您希望在数据集上测试DAWN的性能，我们建议将我们的代码进行修改，并为每个步骤批量处理数据（包括提取初始状态、音频嵌入、PBNet推理和A2V-FDM推理）。反复加载模型将会大大降低您的测试效率。我们还计划在未来发布HDTF数据集的推理代码。
 
