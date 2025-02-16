@@ -73,6 +73,8 @@ The preparation for inference:
             ├── LFG_128_1000ep.pth
             ├── DAWN_256.pth
             ├── DAWN_128.pth
+            ├── pbnet-seperate/
+            |     ├── .....
             └── hubert-large-ls960-ft/
                   ├── .....
       ```
