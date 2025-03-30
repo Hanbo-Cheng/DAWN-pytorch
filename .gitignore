@@ -7,3 +7,4 @@ pretrain_models/*
 *.mp3
 *.mp4
 tmp*
+output/*
