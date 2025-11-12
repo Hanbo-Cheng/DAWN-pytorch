@@ -1,0 +1,18 @@
+input_size: 512
+max_n_frames: 600
+random_seed: 1234
+mean: [0.0, 0.0, 0.0]
+win_width: 20
+sampling_step: 20
+ddim_sampling_eta: 1.0
+cond_scale: 1.0
+
+model_config:
+  is_train: false
+  pose_dim: 7
+  config_pth: './pretrain_2/checkpoint/512/LFG/hdtf512_100ep.yaml'
+  ae_pretrained_pth: './pretrain_2/checkpoint/512/LFG/RegionMM.pth'
+  ae2_pretrained_pth: './pretrain_2/checkpoint/512/LFG/VAE_0020_S410000.pth'
+  ae2_config: './pretrain_2/checkpoint/VAE_32_config'
+  diffusion_pretrained_pth: '/disk2/pfhu/DAWN-pytorch/pretrain_2/checkpoint/512_new/flowdiff_0008_S050000.pth'
+  compress_factor: 32

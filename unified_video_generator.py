@@ -66,9 +66,9 @@ class VideoGenerator:
 
         # HuBERT model configuration
         print("Loading the Wav2Vec2 Processor...")
-        self.wav2vec2_processor = AutoProcessor.from_pretrained("./pretrain_models/hubert-large-ls960-ft")
+        self.wav2vec2_processor = AutoProcessor.from_pretrained("/disk2/pfhu/hubert-large-ls960-ft")
         print("Loading the HuBERT Model...")
-        self.hubert_model = HubertModel.from_pretrained("./pretrain_models/hubert-large-ls960-ft")
+        self.hubert_model = HubertModel.from_pretrained("/disk2/pfhu/hubert-large-ls960-ft")
         self.hubert_model.eval()
         # PBnet related configuration
         self.pbnet_pose_ckpt = './pretrain_models/pbnet_seperate/pose/checkpoint_40000.pth.tar'
@@ -587,11 +587,11 @@ class VideoGenerator:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--audio_path', type=str, default= 'WRA_MarcoRubio_000.wav', help='Input audio path')
-    parser.add_argument('--image_path', type=str, default= 'real_female_1.jpeg', help='Input image path')
-    parser.add_argument('--output_path', type=str, default= 'output', help='Output video path')
+    parser.add_argument('--audio_path', type=str, default= '/disk2/pfhu/hdtf_video_process/gt_audio_trimmed/cut_WRA_GeorgeLeMieux_000.wav', help='Input audio path')
+    parser.add_argument('--image_path', type=str, default= '/disk2/pfhu/hdtf_video_process/img/GT/WRA_GeorgeLeMieux_000/0001.jpg', help='Input image path')
+    parser.add_argument('--output_path', type=str, default= 'output_dawn_256', help='Output video path')
     parser.add_argument('--cache_path', type=str, default='cache/tmp', help='Cache file path')
-    parser.add_argument('--resolution', type=int, default=128, help='resolution')
+    parser.add_argument('--resolution', type=int, default=256, help='resolution')
     return parser.parse_args()
 
 def main():

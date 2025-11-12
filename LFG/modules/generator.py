@@ -60,12 +60,15 @@ class Generator(nn.Module):
 
     @staticmethod
     def deform_input(inp, optical_flow):
-        _, h_old, w_old, _ = optical_flow.shape
+        bs, h_old, w_old, _ = optical_flow.shape
         _, _, h, w = inp.shape
         if h_old != h or w_old != w:
             optical_flow = optical_flow.permute(0, 3, 1, 2)
             optical_flow = F.interpolate(optical_flow, size=(h, w), mode='bilinear')
             optical_flow = optical_flow.permute(0, 2, 3, 1)
+            
+        if inp.shape[0] == 1:
+            inp = inp.repeat(bs, 1, 1, 1)
         return F.grid_sample(inp, optical_flow)
 
     def apply_optical(self, input_previous=None, input_skip=None, motion_params=None):
@@ -143,7 +146,10 @@ class Generator(nn.Module):
         skips = [out]
         for i in range(len(self.down_blocks)):
             out = self.down_blocks[i](out)
-            skips.append(out)
+            if out.shape[0] == 1:
+                skips.append(out.repeat(optical_flow.shape[0],1,1,1))
+            else:
+                skips.append(out)
 
         output_dict = {}
         motion_params = {}

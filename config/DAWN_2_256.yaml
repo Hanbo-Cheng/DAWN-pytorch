@@ -1,0 +1,18 @@
+input_size: 256
+max_n_frames: 1600
+random_seed: 1234
+mean: [0.0, 0.0, 0.0]
+win_width: 40
+sampling_step: 20
+ddim_sampling_eta: 1.0
+cond_scale: 1.0
+
+model_config:
+  is_train: false
+  pose_dim: 7
+  config_pth: './config/hdtf256.yaml'
+  ae_pretrained_pth: './pretrain_models/LFG_256_400ep.pth'
+  ae2_pretrained_pth: './pretrain_2/checkpoint/256/VAE_16/VAE_0028_S175800.pth'
+  ae2_config: './pretrain_2/checkpoint/VAE_16_config'
+  diffusion_pretrained_pth: './pretrain_2/checkpoint/256/DM_16/flowdiff_0015_S337500.pth'
+  compress_factor: 16

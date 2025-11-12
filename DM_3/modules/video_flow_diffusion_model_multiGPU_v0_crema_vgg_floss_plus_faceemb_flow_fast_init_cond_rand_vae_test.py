@@ -1,0 +1,786 @@
+# based on video_flow_diffusion_model.py
+# use diffusion model to generate pseudo ground truth flow volume based on RegionMM
+# 3D noise to 3D flow
+# flow size: 2*32*32*40
+# enable multiple GPU
+
+# 目前不适用vgg19
+
+import os
+import torch
+import torch.nn as nn
+import sys
+from diffusers import AutoencoderKL
+from LFG.modules.generator import Generator
+from LFG.modules.bg_motion_predictor import BGMotionPredictor
+from LFG.modules.region_predictor import RegionPredictor
+from DM_3.modules.video_flow_diffusion_multiGPU_v0_crema_plus_faceemb_ca_multi_vae_test_local_opt import DynamicNfUnet3D, DynamicNfGaussianDiffusion
+import yaml
+from sync_batchnorm import DataParallelWithCallback
+from filter_fourier import *
+
+from torchvision import models
+import numpy as np
+import time
+from einops import rearrange
+from tqdm import tqdm
+
+import gc
+
+import gc
+
+
+from DM_3.modules.image_projector import ResNet, ResBlock
+
+class Attention(nn.Module):
+    def __init__(self, params):
+        super(Attention, self).__init__()
+        self.fc_query = nn.Linear(params['n'], params['dim_attention'], bias=False)
+        self.fc_attention = nn.Linear(params['dim_attention'], 1)
+    
+    def forward(self, ctx_val, ctx_key, ctx_mask, ht_query):
+
+        ht_query = self.fc_query(ht_query)
+
+        attention_score = torch.tanh(ctx_key + ht_query[:, None, None, :])
+        attention_score = self.fc_attention(attention_score).squeeze(3)
+        
+        attention_score = attention_score - attention_score.max()
+        attention_score = torch.exp(attention_score) * ctx_mask
+        attention_score = attention_score / (attention_score.sum(2).sum(1)[:, None, None] + 1e-10)
+
+        ct = (ctx_val * attention_score[:, None, :, :]).sum(3).sum(2)
+
+        return ct, attention_score
+        
+class Face_loc_Encoder(nn.Module):
+    def __init__(self, dim = 1):
+        super(Face_loc_Encoder, self).__init__()
+        self.conv1 = nn.Conv2d(dim, 8, kernel_size=3, stride=4, padding=1)
+        self.conv2 = nn.Conv2d(8, 8, kernel_size=3, stride=2, padding=1)
+        self.conv4 = nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = nn.functional.relu(x)
+        x = self.conv2(x)
+        x = nn.functional.relu(x)
+        # x = self.conv3(x)
+        # x = nn.functional.relu(x)
+        x = self.conv4(x)
+        x = nn.functional.relu(x)
+        return x
+
+class Vgg19(torch.nn.Module):
+    """
+    Vgg19 network for perceptual loss.
+    """
+
+    def __init__(self, requires_grad=False):
+        super(Vgg19, self).__init__()
+        vgg_pretrained_features = models.vgg19(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        self.slice5 = torch.nn.Sequential()
+        for x in range(2):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(2, 7):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(7, 12):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(12, 21):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(21, 30):
+            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+
+        self.mean = torch.nn.Parameter(data=torch.Tensor(np.array([0.485, 0.456, 0.406]).reshape((1, 3, 1, 1))),
+                                       requires_grad=False)
+        self.std = torch.nn.Parameter(data=torch.Tensor(np.array([0.229, 0.224, 0.225]).reshape((1, 3, 1, 1))),
+                                      requires_grad=False)
+
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, x):
+        x = (x - self.mean) / self.std
+        h_relu1 = self.slice1(x)
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
+        out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
+        return out
+
+class ImagePyramide(torch.nn.Module):
+    """
+    Create image pyramide for computing pyramide perceptual loss.
+    """
+
+    def __init__(self, scales, num_channels):
+        super(ImagePyramide, self).__init__()
+        downs = {}
+        for scale in scales:
+            downs[str(scale).replace('.', '-')] = AntiAliasInterpolation2d(num_channels, scale)
+        self.downs = nn.ModuleDict(downs)
+
+    def forward(self, x):
+        out_dict = {}
+        for scale, down_module in self.downs.items():
+            out_dict['prediction_' + str(scale).replace('-', '.')] = down_module(x)
+        return out_dict
+
+class FlowDiffusion(nn.Module):
+    def __init__(self, img_size=32, num_frames=40, sampling_timesteps=250,
+                 null_cond_prob=0.1,
+                 ddim_sampling_eta=1.,
+                 pose_dim = 7,
+                 dim_mults=(1, 2, 4, 8),
+                 is_train=True,
+                 use_residual_flow=False,
+                 learn_null_cond=False,
+                 use_deconv=True,
+                 win_width = 20,
+                 padding_mode="zeros",
+                 pretrained_pth="/train20/intern/permanent/lmlin2/Flow/CVPR23_LFDM_sw/data/log-hdtf/hdtf128_2023-11-17_20:13/snapshots/RegionMM.pth",
+                 config_pth="/train20/intern/permanent/hbcheng2/AIGC_related/CVPR23_LFDM_sw/config/hdtf128.yaml",
+                 vae_ckpt = '/train20/intern/permanent/hbcheng2/AIGC_related/DAWN-vqvae/AE/data/log-hdtf-256-compress-KL/hdtf256_100ep_2024-12-09_13:58/snapshots/VAE_0042_S070344.pth',
+                 vae_config = '/train20/intern/permanent/hbcheng2/AIGC_related/DAWN-vqvae/AE/data/log-hdtf-256-compress/hdtf256_100ep_2024-11-03_19:38'):
+        
+        super(FlowDiffusion, self).__init__()
+        self.use_residual_flow = use_residual_flow
+
+        checkpoint = torch.load(pretrained_pth)
+        checkpoint_vae = torch.load(vae_ckpt)
+        # torch.load('/train20/intern/permanent/hbcheng2/AIGC_related/DAWN-vqvae/AE/data/log-hdtf-256-compress-KL/hdtf256_100ep_2024-12-09_13:58/snapshots/VAE_0042_S070344.pth')
+        # torch.load('/train20/intern/permanent/hbcheng2/AIGC_related/DAWN-vqvae/AE/data/log-hdtf-256-compress/hdtf256_100ep_2024-11-03_19:38/snapshots/VAE_0042_S097700.pth')
+        with open(config_pth) as f:
+            config = yaml.safe_load(f)
+
+        self.generator = Generator(num_regions=config['model_params']['num_regions'],
+                                   num_channels=config['model_params']['num_channels'],
+                                   revert_axis_swap=config['model_params']['revert_axis_swap'],
+                                   **config['model_params']['generator_params']).cuda()
+        self.generator.load_state_dict(checkpoint['generator'])
+        self.generator.eval()
+        self.set_requires_grad(self.generator, False)
+
+        self.region_predictor = RegionPredictor(num_regions=config['model_params']['num_regions'],
+                                                num_channels=config['model_params']['num_channels'],
+                                                estimate_affine=config['model_params']['estimate_affine'],
+                                                **config['model_params']['region_predictor_params']).cuda()
+        self.region_predictor.load_state_dict(checkpoint['region_predictor'])
+        self.region_predictor.eval()
+        self.set_requires_grad(self.region_predictor, False)
+
+        self.vae = AutoencoderKL.from_config(vae_config).to("cuda")
+        self.vae.load_state_dict(checkpoint_vae['vae'])
+        self.vae.eval()
+        self.set_requires_grad(self.vae, False)
+
+        self.bg_predictor = BGMotionPredictor(num_channels=config['model_params']['num_channels'],
+                                              **config['model_params']['bg_predictor_params'])
+        self.bg_predictor.load_state_dict(checkpoint['bg_predictor'])
+        self.bg_predictor.eval()
+        self.set_requires_grad(self.bg_predictor, False)
+
+        self.image_projector = ResNet(ResBlock, in_channels = 256, layers = [2, 2, 2]).cuda()
+
+        self.scales = config['train_params']['scales']
+        self.pose_dim = pose_dim
+        # self.pyramid = ImagePyramide(self.scales, self.generator.num_channels)
+        # if torch.cuda.is_available():
+        #     self.pyramid = self.pyramid.cuda()
+
+        # self.vgg_loss_weights = config['train_params']['loss_weights']['rec_vgg']
+        # if sum(self.vgg_loss_weights) != 0:
+        #     self.vgg = Vgg19()
+        #     if torch.cuda.is_available():
+        #         self.vgg = self.vgg.cuda()
+
+        self.unet = DynamicNfUnet3D(dim=64,
+                           cond_dim=1024 + 7 + 2,
+                           cond_aud=1024,
+                           cond_pose=7,
+                           cond_eye=2,
+                           num_frames=num_frames,
+                           channels=4 + 512 + 16,
+                           out_grid_dim=4,
+                           out_conf_dim=1,
+                           dim_mults=dim_mults,
+                           use_hubert_audio_cond=True,
+                           learn_null_cond=learn_null_cond,
+                           use_final_activation=False,
+                           use_deconv=use_deconv,
+                           padding_mode=padding_mode,
+                           win_width = win_width)
+
+        self.diffusion = DynamicNfGaussianDiffusion(
+            denoise_fn = self.unet,
+            num_frames=num_frames,
+            image_size=img_size,
+            sampling_timesteps=sampling_timesteps,
+            timesteps=1000,  # number of steps
+            loss_type='l2',  # L1 or L2
+            use_dynamic_thres=True,
+            null_cond_prob=null_cond_prob,
+            ddim_sampling_eta=ddim_sampling_eta
+        )
+
+        self.face_loc_emb = Face_loc_Encoder()
+
+        # training
+        self.is_train = is_train
+        if self.is_train:
+            self.unet.train()
+            self.diffusion.train()
+
+    def update_num_frames(self, new_num_frames):
+        # to update num_frames of Unet3D and GaussianDiffusion
+        self.unet.update_num_frames(new_num_frames)
+        self.diffusion.update_num_frames(new_num_frames)
+
+    def generate_bbox_mask(self, bbox, size = 32):
+        # b = bbox.shape[0]
+
+        b, c, fn = bbox.size()
+        bbox = bbox.cuda()
+        bbox = bbox[:,:,0]  # b, c, fn
+        bbox[:, :2] = (bbox[:, :2]/bbox[:, 4].unsqueeze(1)) * size  # 把原来的比例rescale 到32* 32
+        bbox[:,2:4] = (bbox[:, 2:4]/bbox[:, 5].unsqueeze(1) )* size
+
+        bbox_left_top = bbox[:, :4:2].to(torch.int32)  # 左上角坐标
+        bbox_right_bottom = (bbox[:, 1:4:2] +1).to(torch.int32)  # 右下角坐标
+
+        # 生成对应的索引
+        row_indices = torch.arange(size).view(1, size, 1).expand(b, size, size).to(torch.uint8).cuda()
+        col_indices = torch.arange(size).view(1, 1, size).expand(b, size, size).to(torch.uint8).cuda()
+
+        # 将 mask 中 bbox 区域置为 1, 这边需要特别注意， 在图像中左边第一个坐标是y， 第二个坐标是x TODO：DDP 适配
+        mask = (row_indices >= bbox_left_top[:, 1].view(b, 1, 1)) & (row_indices <= bbox_right_bottom[:, 1].view(b, 1, 1)) & \
+            (col_indices >= bbox_left_top[:, 0].view(b, 1, 1)) & (col_indices <= bbox_right_bottom[:, 0].view(b, 1, 1))
+        # mask : b,32,32
+        # 将布尔张量转换为 float 类型（1 或 0）
+
+        # img_preview = real_vid[0,:,0].to(torch.uint8).permute(1,2,0).cpu().numpy()
+        # mask_preview = mask.permute(1,2,0).squeeze().to(torch.uint8).cpu().numpy()
+
+        # 使用 cv2.resize 进行插值
+        # array_128x128 = cv2.resize(mask_preview, (128, 128), interpolation=cv2.INTER_LINEAR)
+        # img_prev = img_preview * array_128x128
+
+        bbox_mask = mask.unsqueeze(1).float()  # b, 1, 32, 32
+
+        return bbox_mask
+
+    def generate_mouth_mask(self, mouth_lmk, origin_size, size = 32):
+        b, fn, pn, c = mouth_lmk.size()  # b, fn  12,  2
+
+        origin_size = origin_size.unsqueeze(1)
+        mouth_lmk = (mouth_lmk/origin_size) * size
+
+        ld_coner = mouth_lmk.max(dim=-2)[0] + 1
+        ru_coner = mouth_lmk.min(dim=-2)[0] - 1
+
+        row_indices = torch.arange(size).view(1, size, 1).expand(b, fn, size, size).to(torch.uint8).cuda()
+        col_indices = torch.arange(size).view(1, 1, size).expand(b, fn, size, size).to(torch.uint8).cuda()
+
+        mask = (row_indices >= ru_coner[:,:, 1].view(b, fn, 1, 1)) & (row_indices <= ld_coner[:,:, 1].view(b, fn, 1, 1)) & \
+            (col_indices >= ru_coner[:,:, 0].view(b, fn, 1, 1)) & (col_indices <= ld_coner[:,:, 0].view(b, fn, 1, 1))
+
+        bbox_mask = (mask).float()  # b, 1, 32, 32
+
+        return bbox_mask
+
+    def generate_eye_mask(self, eye_lmk, origin_size, size = 32):
+        # b = bbox.shape[0]
+
+        b, fn, pn, c = eye_lmk.size()  # b, fn  12,  2
+
+        origin_size = origin_size.unsqueeze(1)
+        eye_lmk = (eye_lmk/origin_size) * size
+        eye_bbox_l_max, eye_bbox_l_min = eye_lmk[:,:,:6].max(dim=-2)[0] + 1, eye_lmk[:,:,:6].min(-2)[0] -1
+        eye_bbox_r_max, eye_bbox_r_min = eye_lmk[:,:,6:].max(-2)[0] + 1, eye_lmk[:,:,6:].min(-2)[0] -1
+
+        eye_bbox_l_max = eye_bbox_l_max.to(torch.int32) +1
+        eye_bbox_l_min = eye_bbox_l_min.to(torch.int32) -1
+        eye_bbox_r_max = eye_bbox_r_max.to(torch.int32) +1
+        eye_bbox_r_min = eye_bbox_r_min.to(torch.int32) -1
+
+
+        # 生成对应的索引
+        row_indices = torch.arange(size).view(1, size, 1).expand(b, fn, size, size).to(torch.uint8).cuda()
+        col_indices = torch.arange(size).view(1, 1, size).expand(b, fn, size, size).to(torch.uint8).cuda()
+
+        # 将 mask 中 bbox 区域置为 1, 这边需要特别注意， 在图像中左边第一个坐标是y， 第二个坐标是x
+        mask_l = (row_indices >= eye_bbox_l_min[:,:, 1].view(b, fn, 1, 1)) & (row_indices <= eye_bbox_l_max[:,:, 1].view(b, fn, 1, 1)) & \
+            (col_indices >= eye_bbox_l_min[:,:, 0].view(b, fn, 1, 1)) & (col_indices <= eye_bbox_l_max[:,:, 0].view(b, fn, 1, 1))
+
+        mask_r = (row_indices >= eye_bbox_r_min[:,:, 1].view(b, fn, 1, 1)) & (row_indices <= eye_bbox_r_max[:,:, 1].view(b, fn, 1, 1)) & \
+            (col_indices >= eye_bbox_r_min[:,:, 0].view(b, fn, 1, 1)) & (col_indices <= eye_bbox_r_max[:,:, 0].view(b, fn, 1, 1))
+        # mask : b,32,32
+        # 将布尔张量转换为 float 类型（1 或 0）
+
+        # img_preview = real_vid[0,:,0].to(torch.uint8).permute(1,2,0).cpu().numpy()
+        # mask_preview = mask.permute(1,2,0).squeeze().to(torch.uint8).cpu().numpy()
+
+        # 使用 cv2.resize 进行插值
+        # array_128x128 = cv2.resize(mask_preview, (128, 128), interpolation=cv2.INTER_LINEAR)
+        # img_prev = img_preview * array_128x128
+
+        bbox_mask = (mask_l + mask_r).float()  # b, 1, 32, 32
+
+        return bbox_mask
+
+    def forward(self, real_vid, ref_img, ref_text, ref_pose, ref_eye_blink, bbox, mouth_lmk, eye_lmk, is_eval=False):
+        # compute pseudo ground-truth flow
+        # if __debug__:
+        #         start_time = time.time()  # 记录开始时    
+        if True:
+            b,c,f,h,w = real_vid.size()
+            real_vid = rearrange(real_vid, 'b c f h w -> (b f) c h w')
+            bright = 64. / 255
+            contrast = 0.25
+            sat = 0.25
+            hue = 0.04
+            # bright_f = random.uniform(max(0, 1 - bright), 1 + bright)
+            # contrast_f = random.uniform(max(0, 1 - contrast), 1 + contrast)
+            # sat_f = random.uniform(max(0, 1 - sat), 1 + sat)
+            # hue_f = random.uniform(-hue, hue)
+
+            color_jitters = transforms.ColorJitter(hue = (-hue, hue), \
+                                                   contrast = (max(0, 1 - contrast), 1 + contrast), 
+                                                   saturation = (max(0, 1 - sat), 1 + sat), 
+                                                   brightness = (max(0, 1 - bright), 1 + bright))
+
+            # mast have shape :  [..., 1 or 3, H, W]
+            real_vid = real_vid/255.  # because the img are floats, so need to scale to 0-1
+            real_vid = color_jitters(real_vid)  # shape need be checked
+            real_vid = rearrange(real_vid, '(b f) c h w -> b c f h w', b = b, f = f)
+            ref_img = ref_img.clone().detach()/255.
+            real_vid = real_vid[:,:,1:,:,:]
+
+            # if __debug__:
+            #     end_time = time.time()  # 记录结束时间
+            #     print(f'data augment time 1 {end_time- start_time}')
+            #     start_time = end_time
+
+            # sample_frame_list = color_jitters(sample_frame_list)
+            # if __debug__:
+            #     end_time = time.time()  # 记录结束时间
+            #     print(f'data augment time 2 {end_time- start_time}')
+            #     start_time = end_time
+        # else:
+        #     real_vid = rearrange(real_vid, 'b f c h w -> b c f h w')
+        # else:
+        #     real_vid = real_vid/255.
+        #     ref_img = ref_img/255.
+        b, _, _, H, W = real_vid.size()
+        _, nf, _ = ref_text.size()
+        ref_pose = ref_pose.squeeze(1).permute(0, 2, 1)
+        ref_eye_blink = ref_eye_blink.squeeze(1).permute(0, 2, 1)
+
+        init_pose = ref_pose[:, 0].unsqueeze(1).repeat(1, nf, 1)     # b, fn, 7  init state
+        init_eye = ref_eye_blink[:, 0].unsqueeze(1).repeat(1, nf, 1) # b, fn, 2
+
+        ref_text = torch.concat([ref_text, (ref_pose-init_pose), (ref_eye_blink-init_eye)], dim=-1)
+        ref_text = ref_text[:, 1:]
+        
+        bbox_mask = self.generate_bbox_mask(bbox, size = real_vid.shape[-1])    # b, 1, 32, 32
+
+        bbox_mask = self.face_loc_emb(bbox_mask)  # conv encoder for face mask
+
+        mouth_mask = self.generate_mouth_mask(mouth_lmk, bbox[:,None,-2:,0], size = 16)
+        eye_mask = self.generate_eye_mask(eye_lmk, bbox[:,None,-2:,0], size = 16)
+
+        real_grid_list = []
+        real_conf_list = []
+        real_out_img_list = []
+        real_warped_img_list = []
+        output_dict = {}
+
+        # if __debug__:
+        #     end_time = time.time()  # 记录结束时间
+        #     print(f'forward process time {end_time- start_time}')
+        #     start_time = end_time
+        with torch.no_grad():
+            
+            # for idx in range(nf):
+                # driving_region_params = self.region_predictor(real_vid[:, :, idx, :, :])
+                # bg_params = self.bg_predictor(ref_img, real_vid[:, :, idx, :, :])
+                # generated = self.generator(ref_img, source_region_params=source_region_params,
+                #                            driving_region_params=driving_region_params, bg_params=bg_params)
+                # generated.update({'source_region_params': source_region_params,
+                #                   'driving_region_params': driving_region_params})
+                # real_grid_list.append(generated["optical_flow"].permute(0, 3, 1, 2))
+                # # normalized occlusion map
+                # real_conf_list.append(generated["occlusion_map"])
+                # real_out_img_list.append(generated["prediction"])
+                # real_warped_img_list.append(generated["deformed"])
+            b,c,f,h,w = real_vid.size()
+            real_vid_tmp = rearrange(real_vid, 'b c f h w -> (b f) c h w')# real_vid.reshape(b * f, c, h,  w) 
+            ref_img_tmp = ref_img.unsqueeze(1).repeat(1,f,1,1,1).reshape(-1, 3, h, w)
+            source_region_params = self.region_predictor(ref_img_tmp)
+           
+            driving_region_params = self.region_predictor(real_vid_tmp)
+            bg_params = self.bg_predictor(ref_img_tmp, real_vid_tmp)
+            generated = self.generator(ref_img_tmp, source_region_params=source_region_params,
+                                        driving_region_params=driving_region_params, bg_params=bg_params)
+            
+            output_dict["real_vid_grid"] = rearrange(generated["optical_flow"], '(b f) h w c -> b c f h w', b = b, f = f) # .permute(0,3,1,2).reshape(b, 2, f, 32, 32)
+            output_dict["real_vid_conf"] = rearrange(generated["occlusion_map"], '(b f) c h w -> b c f h w', b = b, f = f) # generated["occlusion_map"].reshape(b, 1, f, 32, 32)
+            output_dict["real_out_vid"] = rearrange(generated["prediction"], '(b f) c h w -> b c f h w', b = b, f = f) # generated["prediction"].reshape(b, 3, f, h, w)
+            output_dict["real_warped_vid"] = rearrange(generated["deformed"], '(b f) c h w -> b c f h w', b = b, f = f) # generated["deformed"].reshape(b, 3, f, h, w)
+
+            identity_grid = self.get_grid(b, f, h//4, w//4, normalize=True).cuda()
+            latent_space = torch.cat((output_dict["real_vid_grid"] - identity_grid, output_dict["real_vid_conf"] * 2 - 1), dim=1)
+            latent_space = rearrange(latent_space, 'b c f h w -> (b f) c h w', b = b, f = f)
+            latent_space = self.vae.encode(latent_space).latent_dist.sample()
+
+            gt_vae = self.vae.decode(latent_space).sample
+            recon_motion = rearrange(gt_vae, '(b f) c h w -> b c f h w', b = b, f = f)
+            fake_grid = (recon_motion[:,:2] + identity_grid)  #bs, 32, 32, 2
+            fake_conf = (recon_motion[:,2].unsqueeze(1) + 1)/2        #bs, 1, 32, 32
+
+            output_dict["real_vid_grid"] = fake_grid # rearrange(fake_grid, '(b f) h w c -> b c f h w', b = b, f = f) # .permute(0,3,1,2).reshape(b, 2, f, 32, 32)
+            output_dict["real_vid_conf"] = fake_conf  # rearrange(fake_conf, '(b f) h w c -> b c f h w', b = b, f = f) # generated["occlusion_map"].reshape(b, 1, f, 32, 32)
+
+            latent_space = rearrange(latent_space, '(b f) c h w -> b c f h w', b = b, f = f)
+
+        # output_dict["real_vid_grid"] = torch.stack(real_grid_list, dim=2)          # bs,2,num_frames,32,32
+        # output_dict["real_vid_conf"] = torch.stack(real_conf_list, dim=2)          # bs,1,num_frames,32,32
+        # output_dict["real_out_vid"] = torch.stack(real_out_img_list, dim=2)        # bs,3,num_frames,128,128
+        # output_dict["real_warped_vid"] = torch.stack(real_warped_img_list, dim=2)  # bs,3,num_frames,128,128
+        # reference images are the same for different time steps, just pick the final one
+        # ref_img_fea = generated["bottle_neck_feat"].clone().detach()       #bs, 256, 32, 32
+        ref_img_fea = generated["bottle_neck_feat"][::f].clone().detach()       #bs, 256, 32, 32
+        del real_vid_tmp, ref_img_tmp
+        del generated
+
+        # if __debug__:
+        #     end_time = time.time()  # 记录结束时间
+        #     print(f'generate gt flow time {end_time- start_time}')
+        #     start_time = end_time
+
+        if self.is_train:
+            h, w, = H // 4, W // 4
+            
+            ref_img_fea = self.image_projector(ref_img_fea)
+            
+            if self.use_residual_flow:
+                
+                # identity_grid = self.get_grid(b, nf, h, w, normalize=True).cuda()
+                output_dict["loss"], output_dict["null_cond_mask"] = self.diffusion(
+                    latent_space,
+                    ref_img_fea,
+                    bbox_mask,
+                    ref_text)
+            else:
+                output_dict["loss"], output_dict["null_cond_mask"] = self.diffusion(
+                    latent_space,
+                    ref_img_fea,
+                    bbox_mask,
+                    ref_text)
+            
+            pred = self.diffusion.pred_x0
+            pred = rearrange(pred, 'b c f h w -> (b f) c h w', b = b, f = f)
+            recon_motion = self.vae.decode(pred).sample # / 0.18215
+            recon_motion = rearrange(recon_motion, '(b f) c h w -> b c f h w', b = b, f = f)
+            fake_grid = (recon_motion[:,:2] + identity_grid)  #bs, 32, 32, 2
+            fake_conf = (recon_motion[:,2].unsqueeze(1) + 1)/2        #bs, 1, 32, 32
+            pred_flow = fake_grid
+            pred_conf = fake_conf
+            # loss_high_freq = hf_loss(fea = pred_flow, mask = self.gaussian_mask.cuda(), dim = 2)
+            # loss_high_freq = hf_loss_2(pred_flow, output_dict["real_vid_grid"], dim=2)
+            # loss_high_freq = nn.MSELoss(reduce = False)(pred_flow, output_dict["real_vid_grid"]) + nn.MSELoss(reduce = False)(pred_conf, output_dict["real_vid_conf"])
+            output_dict['mouth_loss'] = ((output_dict["loss"] * mouth_mask.unsqueeze(1)).sum())/(mouth_mask.sum()+ 1e-5)
+            output_dict['eye_loss'] = ((output_dict["loss"] * eye_mask.unsqueeze(1)).sum())/(eye_mask.sum()+ 1e-5)
+            output_dict["loss"] = output_dict["loss"].mean(1)
+            # output_dict["floss"] = loss_high_freq.mean(1)
+
+            # if __debug__:
+            #     end_time = time.time()  # 记录结束时间
+            #     print(f'forward diffusion time {end_time- start_time}')
+            #     start_time = end_time
+            
+            if(is_eval):
+                with torch.no_grad():
+                    fake_out_img_list = []
+                    fake_warped_img_list = []
+                    # pred = self.diffusion.pred_x0  # bs, 3, nf, 32, 32
+                    if self.use_residual_flow:
+                        output_dict["fake_vid_grid"] = fake_grid
+                    else:
+                        output_dict["fake_vid_grid"] = fake_grid  # optical flow predicted by DM_2   bs, 2, nf, 32, 32
+                    output_dict["fake_vid_conf"] = fake_conf # occlusion map  predicted by DM_2   bs, 1, nf, 32, 32
+                    for idx in range(nf - 1):
+                        fake_grid = pred_flow[:, :, idx, :, :].permute(0, 2, 3, 1) #bs, 32, 32, 2
+                        fake_conf = pred_conf[:, :, idx, :, :]                     #bs, 1, 32, 32
+                        # predict fake out image and fake warped image
+                        generated = self.generator.forward_with_flow(source_image=ref_img,
+                                                                        optical_flow=fake_grid,
+                                                                        occlusion_map=fake_conf)
+                        fake_out_img_list.append(generated["prediction"])
+                        fake_warped_img_list.append(generated["deformed"].detach())
+                        del generated
+                    output_dict["fake_out_vid"] = torch.stack(fake_out_img_list, dim=2)
+                    output_dict["fake_warped_vid"] = torch.stack(fake_warped_img_list, dim=2).detach()
+                    # output_dict["rec_loss"] = nn.L1Loss(reduce=False)(real_vid, output_dict["fake_out_vid"])
+                    # output_dict["rec_warp_loss"] = nn.L1Loss(reduce=False)(real_vid, output_dict["fake_warped_vid"])
+
+                    # b,c,f,h,w = real_vid.size()
+                    # if __debug__:
+                    #     end_time = time.time()  # 记录结束时间
+                    #     # print(f'forward for eval part time {end_time- start_time}')
+                    #     start_time = end_time
+
+
+        return output_dict
+
+    def sample_one_video(self, sample_img, sample_audio_hubert, sample_pose, sample_eye, sample_bbox, cond_scale, init_pose = None, init_eye = None, real_vid = None):
+        output_dict = {} 
+
+        sample_img_fea = self.generator.compute_fea(sample_img) # sample_img: bs,3,128,128 sample_img_fea: 1,256,32,32
+        sample_img_fea = self.image_projector(sample_img_fea)
+        bbox_mask = self.generate_bbox_mask(sample_bbox, size = sample_img.shape[-1])
+
+        bbox_mask = self.face_loc_emb(bbox_mask)  # conv encoder for face mask
+
+
+        ref_pose = sample_pose.permute(0, 2, 1)
+        ref_eye_blink = sample_eye.permute(0, 2, 1)
+
+        if init_pose == None:
+            init_pose = ref_pose[:, 0].unsqueeze(1).repeat(1,ref_pose.shape[1], 1)
+        else:
+            init_pose = init_pose.unsqueeze(1).repeat(1,ref_pose.shape[1], 1)
+        
+        init_pose = init_pose[:,:,:self.pose_dim]
+        if init_eye == None:
+            init_eye = ref_eye_blink[:, 0].unsqueeze(1).repeat(1,ref_eye_blink.shape[1], 1)
+        else:
+            init_eye = init_eye.unsqueeze(1).repeat(1,ref_eye_blink.shape[1], 1)
+
+        # ref_pose_p = torch.zeros((ref_pose.shape[0],ref_pose.shape[1],ref_pose.shape[2]+1)).cuda()
+        ref_pose_p = torch.zeros((ref_pose.shape[0],ref_pose.shape[1],max(ref_pose.shape[2], init_pose.shape[2]))).cuda()
+        print(ref_pose_p.shape)
+        print(ref_pose.shape)
+        print(init_pose.shape)
+        ref_pose_p[:,:,:ref_pose.shape[2]] = ref_pose
+        ref_pose_p[:,:,-1] = init_pose[:,:,-1]
+        ref_pose = ref_pose_p
+        ref_text = torch.concat([sample_audio_hubert, (ref_pose - init_pose), (ref_eye_blink - init_eye)], dim=-1)
+        f = ref_text.size(1)
+        # ref_text = ref_text[:, 1:]
+        bs = sample_img_fea.size(0)
+        # if cond_scale = 1.0, not using unconditional model
+        # pred bs, 3, nf, 32, 32
+        pred = self.diffusion.sample(sample_img_fea, bbox_mask, cond=ref_text,
+                                     batch_size=bs, cond_scale=cond_scale)
+        b, _, nf, h, w = pred[:, :2, :, :, :].size()
+        # pred = rearrange(pred, 'b c f h w -> (b f) c h w', b = bs, f = f)
+        
+        # pred = self.vae.decode(pred).sample # / 0.18215
+        # pred = rearrange(pred, '(b f) c h w -> b c f h w', b = bs, f = f)
+        # if self.use_residual_flow:
+        process_batch = 32
+        identity_grid = self.get_grid(b, 1, h * 4 , w * 4, normalize=True).cuda().squeeze(2)
+        # output_dict["sample_vid_grid"] = pred[:, :2, :, :, :] + identity_grid
+        # # else:
+        # #     output_dict["sample_vid_grid"] = pred[:, :2, :, :, :]  # bs, 2, nf, 32, 32
+        # output_dict["sample_vid_conf"] = (pred[:, 2, :, :, :].unsqueeze(dim=1) + 1) * 0.5  # bs, 1, nf, 32, 32
+        # nf = output_dict["sample_vid_grid"].size(2)
+        with torch.no_grad():
+            sample_out_img_list = []
+            sample_warped_img_list = []
+            
+            for idx in tqdm(range(0, nf, process_batch)):
+                decode_pred = pred[:,:,idx:idx+process_batch,:,:]
+                decode_pred = rearrange(decode_pred, 'b c f h w -> (b f) c h w', b = bs, f = min(process_batch, nf - idx))
+                decode_pred = self.vae.decode(decode_pred).sample
+                # decode_pred = rearrange(decode_pred, '(b f) c h w -> b c f h w', b = bs, f = process_batch)
+                decode_grid = decode_pred[:, :2, :, :] + identity_grid # [1, 2, 32, 64, 64]
+                sample_grid = decode_grid.permute(0, 2, 3, 1) # rearrange(decode_pred, '(b f) c h w -> b c f h w', b = bs, f = process_batch)
+
+                sample_conf = (decode_pred[:, 2, :, :].unsqueeze(dim=1) + 1) * 0.5  # bs, 1, nf, 32, 32
+                
+                # predict fake out image and fake warped image
+                generated = self.generator.forward_with_flow(source_image=sample_img,
+                                                             optical_flow=sample_grid,
+                                                             occlusion_map=sample_conf)
+                generated["prediction"] = rearrange(generated["prediction"], '(b f) c h w -> b c f h w', b = bs, f = min(process_batch, nf - idx))
+                sample_out_img_list.append(generated["prediction"])
+                generated["deformed"] = rearrange(generated["deformed"], '(b f) c h w -> b c f h w', b = bs, f = min(process_batch, nf - idx))
+                sample_warped_img_list.append(generated["deformed"])
+
+                del sample_grid, sample_conf, generated, decode_pred, decode_grid
+                gc.collect()  # 触发垃圾回收
+
+        output_dict["sample_out_vid"] = torch.concat(sample_out_img_list, dim=2)
+        output_dict["sample_warped_vid"] = torch.concat(sample_warped_img_list, dim=2)
+
+        # output_dict["rec_loss"] = nn.L1Loss(reduce=False)(real_vid, output_dict["sample_out_vid"])
+        # output_dict["rec_warp_loss"] = nn.L1Loss(reduce=False)(real_vid, output_dict["sample_warped_vid"])
+        
+        # b,c,f,h,w = real_vid[0].unsqueeze(dim=0).size()
+        # real_vid_tensor = real_vid[0].unsqueeze(dim=0).permute(0,2,1,3,4).reshape(b*f,c,h,w)
+        # fake_out_vid_tensor  = output_dict["sample_out_vid"].permute(0,2,1,3,4).reshape(b*f,c,h,w)
+
+        # pyramide_real = self.pyramid(real_vid_tensor)
+        # pyramide_generated = self.pyramid(fake_out_vid_tensor)
+
+        # if sum(self.vgg_loss_weights) != 0:
+        #     value_total = 0
+        #     for scale in self.scales:
+        #         x_vgg = self.vgg(pyramide_generated['prediction_' + str(scale)])
+        #         y_vgg = self.vgg(pyramide_real['prediction_' + str(scale)])
+
+        #         for i, weight in enumerate(self.vgg_loss_weights):
+        #             value = torch.abs(x_vgg[i] - y_vgg[i].detach()).mean()
+        #             value_total += self.vgg_loss_weights[i] * value
+        #     output_dict['rec_vgg_loss'] = value_total
+
+        return output_dict
+
+    def sample_one_video_flow(self, sample_img, sample_audio_hubert, sample_pose, sample_eye, sample_bbox, cond_scale, init_pose = None, init_eye = None, real_vid = None):
+        output_dict = {} 
+
+        sample_img_fea = self.generator.compute_fea(sample_img) # sample_img: bs,3,128,128 sample_img_fea: 1,256,32,32
+        sample_img_fea = self.image_projector(sample_img_fea)
+        bbox_mask = self.generate_bbox_mask(sample_bbox, size = sample_img.shape[-1])
+
+        bbox_mask = self.face_loc_emb(bbox_mask)  # conv encoder for face mask
+
+
+        ref_pose = sample_pose.permute(0, 2, 1)
+        ref_eye_blink = sample_eye.permute(0, 2, 1)
+
+        if init_pose == None:
+            init_pose = ref_pose[:, 0].unsqueeze(1).repeat(1,ref_pose.shape[1], 1)
+        else:
+            init_pose = init_pose.unsqueeze(1).repeat(1,ref_pose.shape[1], 1)
+        
+        init_pose = init_pose[:,:,:self.pose_dim]
+        if init_eye == None:
+            init_eye = ref_eye_blink[:, 0].unsqueeze(1).repeat(1,ref_eye_blink.shape[1], 1)
+        else:
+            init_eye = init_eye.unsqueeze(1).repeat(1,ref_eye_blink.shape[1], 1)
+
+        # ref_pose_p = torch.zeros((ref_pose.shape[0],ref_pose.shape[1],ref_pose.shape[2]+1)).cuda()
+        ref_pose_p = torch.zeros((ref_pose.shape[0],ref_pose.shape[1],ref_pose.shape[2])).cuda()
+        print(ref_pose_p.shape)
+        print(ref_pose.shape)
+        print(init_pose.shape)
+        ref_pose_p[:,:,:ref_pose.shape[2]] = ref_pose
+        ref_pose_p[:,:,-1] = init_pose[:,:,-1]
+        ref_pose = ref_pose_p
+        ref_text = torch.concat([sample_audio_hubert, (ref_pose - init_pose), (ref_eye_blink - init_eye)], dim=-1)
+        f = ref_text.size(1)
+        # ref_text = ref_text[:, 1:]
+        bs = sample_img_fea.size(0)
+        # if cond_scale = 1.0, not using unconditional model
+        # pred bs, 3, nf, 32, 32
+        pred = self.diffusion.sample(sample_img_fea, bbox_mask, cond=ref_text,
+                                     batch_size=bs, cond_scale=cond_scale)
+        b, _, nf, h, w = pred[:, :2, :, :, :].size()
+        # pred = rearrange(pred, 'b c f h w -> (b f) c h w', b = bs, f = f)
+        
+        # pred = self.vae.decode(pred).sample # / 0.18215
+        # pred = rearrange(pred, '(b f) c h w -> b c f h w', b = bs, f = f)
+        # if self.use_residual_flow:
+        process_batch = 32
+        identity_grid = self.get_grid(b, 1, h * 4 , w * 4, normalize=True).cuda().squeeze(2)
+        # output_dict["sample_vid_grid"] = pred[:, :2, :, :, :] + identity_grid
+        # # else:
+        # #     output_dict["sample_vid_grid"] = pred[:, :2, :, :, :]  # bs, 2, nf, 32, 32
+        # output_dict["sample_vid_conf"] = (pred[:, 2, :, :, :].unsqueeze(dim=1) + 1) * 0.5  # bs, 1, nf, 32, 32
+        # nf = output_dict["sample_vid_grid"].size(2)
+        with torch.no_grad():
+            sample_out_img_list = []
+            sample_warped_img_list = []
+            
+            for idx in tqdm(range(0, nf, process_batch)):
+                decode_pred = pred[:,:,idx:idx+process_batch,:,:]
+                decode_pred = rearrange(decode_pred, 'b c f h w -> (b f) c h w', b = bs, f = min(process_batch, nf - idx))
+                decode_pred = self.vae.decode(decode_pred).sample
+                # decode_pred = rearrange(decode_pred, '(b f) c h w -> b c f h w', b = bs, f = process_batch)
+                decode_grid = decode_pred[:, :2, :, :] + identity_grid # [1, 2, 32, 64, 64]
+                decode_grid = rearrange(decode_grid, '(b f) c h w -> b c f h w', b = bs, f = min(process_batch, nf - idx)).cpu()
+                # sample_grid = decode_grid.permute(0, 2, 3, 1) # rearrange(decode_pred, '(b f) c h w -> b c f h w', b = bs, f = process_batch)
+
+                # sample_conf = (decode_pred[:, 2, :, :].unsqueeze(dim=1) + 1) * 0.5  # bs, 1, nf, 32, 32
+                
+                # generated["prediction"] = rearrange(generated["prediction"], '(b f) c h w -> b c f h w', b = bs, f = min(process_batch, nf - idx))
+                sample_out_img_list.append(decode_grid)
+                
+
+                del decode_pred, decode_grid
+                gc.collect()  # 触发垃圾回收
+
+        output_dict["sample_vid_grid"] = torch.concat(sample_out_img_list, dim=2)
+        gt_flow = []
+        with torch.no_grad():
+            
+            b,c,f,h,w = real_vid.size()
+            for idx in tqdm(range(0, nf, process_batch)):
+                real_vid_tmp = real_vid[:,:,idx: idx + process_batch]
+                real_vid_tmp = rearrange(real_vid_tmp, 'b c f h w -> (b f) c h w')# real_vid.reshape(b * f, c, h,  w) 
+                ref_img_tmp = sample_img.unsqueeze(1).repeat(1,min(process_batch, nf - idx),1,1,1).reshape(-1, 3, h, w)
+                source_region_params = self.region_predictor(ref_img_tmp)
+            
+                driving_region_params = self.region_predictor(real_vid_tmp)
+                bg_params = self.bg_predictor(ref_img_tmp, real_vid_tmp)
+                generated = self.generator(ref_img_tmp, source_region_params=source_region_params,
+                                            driving_region_params=driving_region_params, bg_params=bg_params)
+                gt_flow.append(rearrange(generated["optical_flow"], '(b f) h w c -> b c f h w', b = b, f = min(process_batch, nf - idx)).cpu()) # .permute(0,3,1,2).reshape(b, 2, f, 32, 32)
+            output_dict["real_vid_grid"] = torch.concat(gt_flow, dim=2)
+
+        return output_dict
+
+    def get_grid(self, b, nf, H, W, normalize=True):
+        if normalize:
+            h_range = torch.linspace(-1, 1, H)
+            w_range = torch.linspace(-1, 1, W)
+        else:
+            h_range = torch.arange(0, H)
+            w_range = torch.arange(0, W)
+        grid = torch.stack(torch.meshgrid([h_range, w_range]), -1).repeat(b, 1, 1, 1).flip(3).float()  # flip h,w to x,y
+        return grid.permute(0, 3, 1, 2).unsqueeze(dim=2).repeat(1, 1, nf, 1, 1)
+
+    def set_requires_grad(self, nets, requires_grad=False):
+        """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
+        Parameters:
+            nets (network list)   -- a list of networks
+            requires_grad (bool)  -- whether the networks require gradients or not
+        """
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+
+                    param.requires_grad = requires_grad
+
+
+if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+    bs = 5
+    img_size = 128
+    num_frames = 10
+    ref_text = ["play basketball"] * bs
+    ref_img = torch.rand((bs, 3, img_size, img_size), dtype=torch.float32).cuda()
+    real_vid = torch.rand((bs, 3, num_frames, img_size, img_size), dtype=torch.float32).cuda()
+    model = FlowDiffusion(num_frames=num_frames, use_residual_flow=False, sampling_timesteps=10, dim_mults=(1, 2, 4, 8, 16))
+    model.cuda()
+    # embedding ref_text
+    # cond = bert_embed(tokenize(ref_text), return_cls_repr=model.diffusion.text_use_bert_cls).cuda()
+
+    # to simulate the situation of hubert embedding
+    cond = torch.rand((bs,10,1024), dtype=torch.float32).cuda()
+    model = DataParallelWithCallback(model)
+    output_dict = model.forward(real_vid=real_vid, ref_img=ref_img, ref_text=cond)
+    model.module.sample_one_video(sample_img=ref_img[0].unsqueeze(dim=0),
+                                  sample_audio_hubert=cond[0].unsqueeze(dim=0),
+                                  cond_scale=1.0)

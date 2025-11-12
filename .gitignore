@@ -8,3 +8,11 @@ pretrain_models/*
 *.mp4
 tmp*
 output/*
+audio_ood/*
+*.gz
+*ood*
+output/*
+output_dawn_256/*
+pretrain_2/*
+run_ood_test/*
+*.wav
